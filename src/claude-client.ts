@@ -25,16 +25,27 @@ VERIFICATION: After any tool call that modifies HA, check the 'success' field an
 
 Be concise. Respond with the action taken and result. No lengthy explanations.`;
 
+// Env-overridable so the bridge isn't married to one consumer's layout.
+// HomeAssistantAutomationService sets these in its launch script; a future
+// non-HA consumer of BRIDGE_MODE=home-assistant would set them to point at
+// its own checkout.
+const HA_CWD =
+  process.env.HA_PROJECT_CWD ??
+  "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService";
+const HA_MCP_COMMAND =
+  process.env.HA_MCP_COMMAND ??
+  "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService/src/HomeAssistantMcp/bin/Release/net8.0/HomeAssistantMcp.exe";
+
 const SDK_OPTIONS = {
   model: "claude-sonnet-4-6",
   systemPrompt: SYSTEM_PROMPT,
   maxTurns: 10,
   permissionMode: "bypassPermissions" as const,
   allowDangerouslySkipPermissions: true,
-  cwd: "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService",
+  cwd: HA_CWD,
   mcpServers: {
     "home-assistant": {
-      command: "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService/src/HomeAssistantMcp/bin/Release/net8.0/HomeAssistantMcp.exe",
+      command: HA_MCP_COMMAND,
       args: [] as string[],
     },
   },

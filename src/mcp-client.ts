@@ -6,7 +6,10 @@
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface, type Interface } from "readline";
 
+// Override with HA_MCP_COMMAND env var when running against a different
+// checkout; fallback is the default HomeAssistantAutomationService layout.
 const MCP_EXE =
+  process.env.HA_MCP_COMMAND ??
   "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService/src/HomeAssistantMcp/bin/Release/net8.0/HomeAssistantMcp.exe";
 
 interface JsonRpcRequest {
