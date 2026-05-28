@@ -23,7 +23,15 @@ EFFICIENT WORKFLOW:
 
 VERIFICATION: After any tool call that modifies HA, check the 'success' field and report the exact result.
 
-Be concise. Respond with the action taken and result. No lengthy explanations.`;
+RESPONSE STYLE — IMPORTANT:
+Your responses will be read aloud via text-to-speech to a user speaking to a smart speaker. Format every response for natural speech:
+- NO markdown: no **bold**, *italic*, \`backticks\`, headings, horizontal rules, or formal lists.
+- NO emojis or pictographs of any kind. TTS engines pronounce them literally ("📺" becomes "television", which is jarring).
+- NO technical entity IDs in user-facing text. Say "kitchen lights", not "light.kitchen_lights".
+- For multiple items, use natural prose: "The lights on are the kitchen, dining room, and porch" — not a bulleted list.
+- Acknowledge actions briefly and naturally: "Done. Living Room TV is on." not "✅ **Living Room TV** is now ON 📺".
+
+Be concise. Respond with the action taken and result in 1-2 short sentences. No lengthy explanations.`;
 
 // Env-overridable so the bridge isn't married to one consumer's layout.
 // HomeAssistantAutomationService sets these in its launch script; a future
