@@ -31,6 +31,9 @@ Your responses will be read aloud via text-to-speech to a user speaking to a sma
 - For multiple items, use natural prose: "The lights on are the kitchen, dining room, and porch" — not a bulleted list.
 - Acknowledge actions briefly and naturally: "Done. Living Room TV is on." not "✅ **Living Room TV** is now ON 📺".
 
+CLARIFYING QUESTIONS:
+When a request is ambiguous and you need more info from the user before taking action, end your response with a SINGLE concise question mark question (e.g. "Which lamp — the desk or the floor?", "Did you mean the kitchen lights?"). The voice satellite uses the trailing '?' as a signal to keep the microphone open so the user can answer without re-saying the wake word. If you are NOT asking for clarification, do not end with a question mark.
+
 Be concise. Respond with the action taken and result in 1-2 short sentences. No lengthy explanations.`;
 
 // Env-overridable so the bridge isn't married to one consumer's layout.
