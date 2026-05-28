@@ -1,6 +1,11 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
-const SYSTEM_PROMPT = `You are an expert Home Assistant automation assistant. You have MCP tools to fully manage a Home Assistant instance.
+// Baked-in default system prompt. Used when a consumer does NOT pass an
+// explicit `systemPrompt` in the request. Consumers (Dwell, the HA voice
+// integration, etc.) are expected to manage their own prompts via Dwell's
+// prompts API and pass them per-request — this default is just a sensible
+// fallback for ad-hoc /api/command callers (e.g. curl during testing).
+const DEFAULT_SYSTEM_PROMPT = `You are an expert Home Assistant automation assistant. You have MCP tools to fully manage a Home Assistant instance.
 
 YOUR CAPABILITIES:
 1. Discover devices and entities (list_entities with pagination, get_entity_state)
@@ -21,28 +26,9 @@ EFFICIENT WORKFLOW:
 - call_service is the generic tool for ANY HA service
 - When possible, combine actions into a single tool call
 
-PREFERRED SCRIPTS (use these instead of searching for ad-hoc ones):
-- For media volume changes ("turn up the kitchen speaker by 5", "turn down the
-  TV 10"): resolve the friendly name to the actual media_player entity_id
-  (use list_entities with domain=media_player + search), then call
-  script.adjust_media_player_volume with: entity_id, direction (up|down),
-  units. Do NOT search for or call hand-written one-off volume scripts —
-  they are often hard-coded to wrong entities.
-
 VERIFICATION: After any tool call that modifies HA, check the 'success' field and report the exact result.
 
-RESPONSE STYLE — IMPORTANT:
-Your responses will be read aloud via text-to-speech to a user speaking to a smart speaker. Format every response for natural speech:
-- NO markdown: no **bold**, *italic*, \`backticks\`, headings, horizontal rules, or formal lists.
-- NO emojis or pictographs of any kind. TTS engines pronounce them literally ("📺" becomes "television", which is jarring).
-- NO technical entity IDs in user-facing text. Say "kitchen lights", not "light.kitchen_lights".
-- For multiple items, use natural prose: "The lights on are the kitchen, dining room, and porch" — not a bulleted list.
-- Acknowledge actions briefly and naturally: "Done. Living Room TV is on." not "✅ **Living Room TV** is now ON 📺".
-
-CLARIFYING QUESTIONS:
-When a request is ambiguous and you need more info from the user before taking action, end your response with a SINGLE concise question mark question (e.g. "Which lamp — the desk or the floor?", "Did you mean the kitchen lights?"). The voice satellite uses the trailing '?' as a signal to keep the microphone open so the user can answer without re-saying the wake word. If you are NOT asking for clarification, do not end with a question mark.
-
-Be concise. Respond with the action taken and result in 1-2 short sentences. No lengthy explanations.`;
+Be concise. Respond with the action taken and result. No lengthy explanations.`;
 
 // Env-overridable so the bridge isn't married to one consumer's layout.
 // HomeAssistantAutomationService sets these in its launch script; a future
@@ -55,9 +41,10 @@ const HA_MCP_COMMAND =
   process.env.HA_MCP_COMMAND ??
   "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService/src/HomeAssistantMcp/bin/Release/net8.0/HomeAssistantMcp.exe";
 
-const SDK_OPTIONS = {
+// SDK options template. systemPrompt is filled in per call so the caller
+// can pass their own. Falls back to DEFAULT_SYSTEM_PROMPT.
+const BASE_SDK_OPTIONS = {
   model: "claude-sonnet-4-6",
-  systemPrompt: SYSTEM_PROMPT,
   maxTurns: 10,
   permissionMode: "bypassPermissions" as const,
   allowDangerouslySkipPermissions: true,
@@ -115,7 +102,7 @@ export async function warmUp(): Promise<void> {
 
   const result = query({
     prompt: "Respond with just the word 'ready'. Do not use any tools.",
-    options: { ...SDK_OPTIONS, maxTurns: 1 },
+    options: { ...BASE_SDK_OPTIONS, systemPrompt: DEFAULT_SYSTEM_PROMPT, maxTurns: 1 },
   });
 
   for await (const event of result) {
@@ -130,13 +117,23 @@ export async function warmUp(): Promise<void> {
 
 // ---------- main API ----------
 
+export interface ExecuteCommandOptions {
+  /** Optional override for the SDK system prompt. Falls back to DEFAULT_SYSTEM_PROMPT. */
+  systemPrompt?: string;
+}
+
 export async function executeCommand(
   message: string,
   callbacks: StreamCallbacks,
   abortSignal?: AbortSignal,
+  opts: ExecuteCommandOptions = {},
 ): Promise<void> {
   const abortController = new AbortController();
   const toolsUsed: string[] = [];
+  const systemPrompt =
+    typeof opts.systemPrompt === "string" && opts.systemPrompt.trim().length > 0
+      ? opts.systemPrompt
+      : DEFAULT_SYSTEM_PROMPT;
 
   // Timing state
   const t0 = performance.now();
@@ -153,7 +150,7 @@ export async function executeCommand(
   try {
     console.log(`[timing] ---- Query start: "${message.slice(0, 60)}" ----`);
 
-    const options = { ...SDK_OPTIONS, abortController };
+    const options = { ...BASE_SDK_OPTIONS, systemPrompt, abortController };
 
     // Resume prior session if available
     if (sdkSessionId) {
