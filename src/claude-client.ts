@@ -21,6 +21,14 @@ EFFICIENT WORKFLOW:
 - call_service is the generic tool for ANY HA service
 - When possible, combine actions into a single tool call
 
+PREFERRED SCRIPTS (use these instead of searching for ad-hoc ones):
+- For media volume changes ("turn up the kitchen speaker by 5", "turn down the
+  TV 10"): resolve the friendly name to the actual media_player entity_id
+  (use list_entities with domain=media_player + search), then call
+  script.adjust_media_player_volume with: entity_id, direction (up|down),
+  units. Do NOT search for or call hand-written one-off volume scripts —
+  they are often hard-coded to wrong entities.
+
 VERIFICATION: After any tool call that modifies HA, check the 'success' field and report the exact result.
 
 RESPONSE STYLE — IMPORTANT:
