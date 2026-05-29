@@ -7,6 +7,15 @@ export interface CommandRequest {
    * Dwell's `/api/ai/prompts` API and pass it here per-request.
    */
   systemPrompt?: string;
+  /**
+   * Optional override for which Claude model to invoke (e.g.
+   * "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"). When
+   * omitted, the Bridge uses its baked-in default model. Letting consumers
+   * pick per-request lets callers trade off latency vs capability per
+   * use case — e.g. voice satellites prefer Haiku for snappier responses,
+   * chat surfaces stick with Sonnet for deeper reasoning.
+   */
+  model?: string;
 }
 
 export interface SSEEvent {

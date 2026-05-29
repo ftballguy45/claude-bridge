@@ -120,6 +120,8 @@ export async function warmUp(): Promise<void> {
 export interface ExecuteCommandOptions {
   /** Optional override for the SDK system prompt. Falls back to DEFAULT_SYSTEM_PROMPT. */
   systemPrompt?: string;
+  /** Optional override for the Claude model. Falls back to BASE_SDK_OPTIONS.model. */
+  model?: string;
 }
 
 export async function executeCommand(
@@ -134,6 +136,10 @@ export async function executeCommand(
     typeof opts.systemPrompt === "string" && opts.systemPrompt.trim().length > 0
       ? opts.systemPrompt
       : DEFAULT_SYSTEM_PROMPT;
+  const model =
+    typeof opts.model === "string" && opts.model.trim().length > 0
+      ? opts.model.trim()
+      : BASE_SDK_OPTIONS.model;
 
   // Timing state
   const t0 = performance.now();
@@ -150,7 +156,7 @@ export async function executeCommand(
   try {
     console.log(`[timing] ---- Query start: "${message.slice(0, 60)}" ----`);
 
-    const options = { ...BASE_SDK_OPTIONS, systemPrompt, abortController };
+    const options = { ...BASE_SDK_OPTIONS, systemPrompt, model, abortController };
 
     // Resume prior session if available
     if (sdkSessionId) {

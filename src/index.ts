@@ -128,7 +128,7 @@ function isSimpleCommand(msg: string): boolean {
 
 // --- POST /api/command ---
 app.post("/api/command", (req: Request, res: Response) => {
-  const { message, systemPrompt } = req.body as CommandRequest;
+  const { message, systemPrompt, model } = req.body as CommandRequest;
 
   if (!message?.trim()) {
     res.status(400).json({ error: "message is required" });
@@ -137,6 +137,9 @@ app.post("/api/command", (req: Request, res: Response) => {
 
   if (systemPrompt) {
     console.log(`[bridge] Using caller-supplied systemPrompt (${systemPrompt.length} chars)`);
+  }
+  if (model) {
+    console.log(`[bridge] Using caller-supplied model: ${model}`);
   }
 
   // SSE headers
@@ -194,7 +197,7 @@ app.post("/api/command", (req: Request, res: Response) => {
             sendSSE(res, "error", { error });
             safeEnd(res);
           },
-        }, abortController.signal, { systemPrompt });
+        }, abortController.signal, { systemPrompt, model });
       }
     } catch (err) {
       console.error("[bridge] Command failed:", err);
