@@ -12,6 +12,13 @@ const MCP_EXE =
   process.env.HA_MCP_COMMAND ??
   "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService/src/HomeAssistantMcp/bin/Release/net8.0/HomeAssistantMcp.exe";
 
+// When HA_MCP_URL is set the HA tools are served over HTTP (the .NET API hosts
+// them) and the Claude Agent SDK connects directly — see claude-client.ts. This
+// stdio client (used only by the local-model/Ollama tool path) then has no child
+// to spawn. TODO: port this path to an HTTP MCP client to re-enable local-model
+// tool use in HTTP mode (currently the container has no Ollama, so it's dormant).
+const HA_MCP_URL = process.env.HA_MCP_URL;
+
 interface JsonRpcRequest {
   jsonrpc: "2.0";
   id: number;
@@ -42,6 +49,11 @@ let toolSchemas: Array<{ name: string; description: string; inputSchema: Record<
  */
 export async function startMcpServer(): Promise<void> {
   if (mcpProcess) return;
+
+  if (HA_MCP_URL) {
+    console.log(`[mcp] HA_MCP_URL set (${HA_MCP_URL}) — Claude uses the HTTP MCP server directly; skipping stdio child.`);
+    return;
+  }
 
   console.log("[mcp] Starting HA MCP server...");
   const t0 = performance.now();

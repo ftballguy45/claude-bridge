@@ -5,30 +5,12 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 // integration, etc.) are expected to manage their own prompts via Dwell's
 // prompts API and pass them per-request — this default is just a sensible
 // fallback for ad-hoc /api/command callers (e.g. curl during testing).
-const DEFAULT_SYSTEM_PROMPT = `You are an expert Home Assistant automation assistant. You have MCP tools to fully manage a Home Assistant instance.
-
-YOUR CAPABILITIES:
-1. Discover devices and entities (list_entities with pagination, get_entity_state)
-2. Create automations from natural language - translate what users describe into HA YAML automations
-3. Manage automations (list, get details, create, update, delete, enable, disable)
-4. Create and manage reusable scripts for complex action sequences
-5. Schedule recurring tasks for any device (thermostats, vacuums, lights, etc.)
-6. Control devices directly (lights, switches, climate, vacuums, scenes, media players, locks, fans, covers)
-7. Generate Lovelace dashboard YAML configurations
-
-DEVICE CAPABILITIES:
-- NEVER assume capabilities from entity names - names are user-defined labels
-- ALWAYS check 'attributes' from list_entities or get_entity_state
-
-EFFICIENT WORKFLOW:
-- list_entities supports pagination (page, page_size), domain filter, and search
-- list_automations returns summaries only - use get_automation_by_id for full config
-- call_service is the generic tool for ANY HA service
-- When possible, combine actions into a single tool call
-
-VERIFICATION: After any tool call that modifies HA, check the 'success' field and report the exact result.
-
-Be concise. Respond with the action taken and result. No lengthy explanations.`;
+// Minimal fallback only. Real consumers (Dwell, the HA voice integration) pass
+// their own systemPrompt per request — that's the single source of truth for
+// behaviour. Capability/usage guidance is single-sourced in the MCP server's
+// instructions + tool descriptions (served by the .NET API), so it's NOT
+// duplicated here. Used for ad-hoc /api/command callers (e.g. curl) only.
+const DEFAULT_SYSTEM_PROMPT = `You are a Home Assistant assistant with MCP tools to discover, control, and automate a Home Assistant instance. After any change, check the tool's 'success' field and report the result. Be concise.`;
 
 // Env-overridable so the bridge isn't married to one consumer's layout.
 // HomeAssistantAutomationService sets these in its launch script; a future
@@ -41,6 +23,16 @@ const HA_MCP_COMMAND =
   process.env.HA_MCP_COMMAND ??
   "F:/Code/Scratch/AI/AI Generated UIs/HomeAssistantAutomationService/HomeAssistantAutomationService/src/HomeAssistantMcp/bin/Release/net8.0/HomeAssistantMcp.exe";
 
+// Preferred transport: connect to the long-running HTTP MCP server (the .NET API
+// hosts it at /mcp, e.g. http://ha-automation-service:8080/mcp). This decouples
+// the bridge from the MCP build — no stdio child to spawn, no file locks, no
+// bind-mounted binary. Falls back to spawning the stdio MCP binary when unset.
+const HA_MCP_URL = process.env.HA_MCP_URL;
+
+const HA_MCP_SERVER = HA_MCP_URL
+  ? { type: "http" as const, url: HA_MCP_URL }
+  : { command: HA_MCP_COMMAND, args: [] as string[] };
+
 // SDK options template. systemPrompt is filled in per call so the caller
 // can pass their own. Falls back to DEFAULT_SYSTEM_PROMPT.
 const BASE_SDK_OPTIONS = {
@@ -48,12 +40,10 @@ const BASE_SDK_OPTIONS = {
   maxTurns: 10,
   permissionMode: "bypassPermissions" as const,
   allowDangerouslySkipPermissions: true,
-  cwd: HA_CWD,
+  // cwd only matters when spawning the stdio child; HTTP needs no working dir.
+  cwd: HA_MCP_URL ? process.cwd() : HA_CWD,
   mcpServers: {
-    "home-assistant": {
-      command: HA_MCP_COMMAND,
-      args: [] as string[],
-    },
+    "home-assistant": HA_MCP_SERVER,
   },
 };
 
