@@ -137,6 +137,36 @@ function chooseModel(msg: string): string {
   return isSimpleCommand(msg) ? SIMPLE_MODEL : COMPLEX_MODEL;
 }
 
+// --- Activity reporting ---
+// Fire-and-forget a per-turn record to Dwell (DWELL_ACTIVITY_URL) so it can be
+// viewed in the dashboard instead of tailing logs. Reporting must NEVER affect
+// the turn — errors are swallowed.
+const DWELL_ACTIVITY_URL = process.env.DWELL_ACTIVITY_URL;
+interface ActivityRecord {
+  command: string;
+  route: "claude" | "local";
+  model?: string;
+  modelAutoTiered?: boolean;
+  durationMs?: number;
+  firstTextMs?: number;
+  tools?: string[];
+  toolCount?: number;
+  status: "ok" | "error" | "timeout" | "aborted";
+}
+function reportActivity(record: ActivityRecord): void {
+  if (!DWELL_ACTIVITY_URL) return;
+  fetch(`${DWELL_ACTIVITY_URL.replace(/\/$/, "")}/api/ai/activity`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(record),
+  }).catch((err) =>
+    console.warn(
+      "[bridge] activity report failed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+}
+
 // --- POST /api/command ---
 app.post("/api/command", (req: Request, res: Response) => {
   const { message, systemPrompt, model } = req.body as CommandRequest;
@@ -196,6 +226,15 @@ app.post("/api/command", (req: Request, res: Response) => {
           durationMs: result.durationMs,
         });
         safeEnd(res);
+        reportActivity({
+          command: message,
+          route: "local",
+          model: "ollama (local)",
+          durationMs: result.durationMs,
+          tools: result.toolsUsed,
+          toolCount: result.toolsUsed.length,
+          status: "ok",
+        });
       } else {
         // Smart path: Claude SDK. Model precedence: caller-supplied (Dwell
         // prompt model / integration override) wins; otherwise auto-tier by
@@ -213,11 +252,31 @@ app.post("/api/command", (req: Request, res: Response) => {
             commandFinished = true;
             sendSSE(res, "done", result);
             safeEnd(res);
+            reportActivity({
+              command: message,
+              route: "claude",
+              model: effectiveModel,
+              modelAutoTiered: !(model && model.trim()),
+              durationMs: result.durationMs,
+              firstTextMs: result.timing?.firstTextMs,
+              tools: result.toolsUsed,
+              toolCount: result.toolsUsed?.length ?? 0,
+              status: "ok",
+            });
           },
           onError: (error) => {
             commandFinished = true;
             sendSSE(res, "error", { error });
             safeEnd(res);
+            reportActivity({
+              command: message,
+              route: "claude",
+              model: effectiveModel,
+              modelAutoTiered: !(model && model.trim()),
+              status: "error",
+              tools: [],
+              toolCount: 0,
+            });
           },
         }, abortController.signal, { systemPrompt, model: effectiveModel });
       }
