@@ -126,6 +126,17 @@ function isSimpleCommand(msg: string): boolean {
   return SIMPLE_PATTERNS.some((p) => p.test(msg));
 }
 
+// --- Model tiering ---
+// Simple device control runs on the fastest model; anything more involved
+// (automations, multi-step, open-ended queries) gets the stronger model. A
+// caller-supplied model (Dwell prompt model / integration override) always
+// wins over this — see the /api/command handler.
+const SIMPLE_MODEL = "claude-haiku-4-5";
+const COMPLEX_MODEL = "claude-sonnet-4-6";
+function chooseModel(msg: string): string {
+  return isSimpleCommand(msg) ? SIMPLE_MODEL : COMPLEX_MODEL;
+}
+
 // --- POST /api/command ---
 app.post("/api/command", (req: Request, res: Response) => {
   const { message, systemPrompt, model } = req.body as CommandRequest;
@@ -154,9 +165,13 @@ app.post("/api/command", (req: Request, res: Response) => {
   sendSSE(res, "session", { sessionId: "persistent" });
 
   let commandFinished = false;
+  // Abort the in-flight SDK query if the caller (HA) hangs up, so we don't keep
+  // burning tokens/turns on a request nobody is listening to anymore.
+  const abortController = new AbortController();
   req.on("close", () => {
     if (!commandFinished) {
-      console.log("[bridge] Client disconnected");
+      console.log("[bridge] Client disconnected — aborting in-flight query");
+      abortController.abort();
     }
   });
 
@@ -182,8 +197,15 @@ app.post("/api/command", (req: Request, res: Response) => {
         });
         safeEnd(res);
       } else {
-        // Smart path: Claude SDK
-        const abortController = new AbortController();
+        // Smart path: Claude SDK. Model precedence: caller-supplied (Dwell
+        // prompt model / integration override) wins; otherwise auto-tier by
+        // command complexity (Haiku for simple control, Sonnet otherwise).
+        const effectiveModel =
+          model && model.trim() ? model.trim() : chooseModel(message);
+        console.log(
+          `[bridge] Model: ${effectiveModel}` +
+            (model && model.trim() ? " (caller-supplied)" : " (auto-tiered)"),
+        );
         await executeCommand(message, {
           onText: (content) => sendSSE(res, "text", { content }),
           onTool: (tool, status) => sendSSE(res, "tool", { tool, status }),
@@ -197,7 +219,7 @@ app.post("/api/command", (req: Request, res: Response) => {
             sendSSE(res, "error", { error });
             safeEnd(res);
           },
-        }, abortController.signal, { systemPrompt, model });
+        }, abortController.signal, { systemPrompt, model: effectiveModel });
       }
     } catch (err) {
       console.error("[bridge] Command failed:", err);
