@@ -35,11 +35,27 @@ const HA_MCP_SERVER = HA_MCP_URL
 
 // SDK options template. systemPrompt is filled in per call so the caller
 // can pass their own. Falls back to DEFAULT_SYSTEM_PROMPT.
+// Claude Code's built-in agent tools. This is a Home Assistant VOICE bridge,
+// not a coding agent — the model must use ONLY the Home Assistant MCP tools.
+// If these built-ins are left enabled, a weaker model (Haiku, used for simple
+// voice commands) grabs Bash/Glob/Grep and "searches the container filesystem"
+// instead of calling list_entities/call_service — and it's a security hole
+// (arbitrary shell in the container, driven by a voice prompt). Block them all.
+const BUILTIN_TOOLS_TO_BLOCK = [
+  "Bash", "BashOutput", "KillShell",
+  "Read", "Write", "Edit", "MultiEdit", "NotebookEdit",
+  "Glob", "Grep",
+  "Task", "Agent",
+  "WebFetch", "WebSearch", "TodoWrite",
+];
+
 const BASE_SDK_OPTIONS = {
   model: "claude-sonnet-4-6",
   maxTurns: 10,
   permissionMode: "bypassPermissions" as const,
   allowDangerouslySkipPermissions: true,
+  // Restrict to the Home Assistant MCP tools only — no shell/filesystem tools.
+  disallowedTools: BUILTIN_TOOLS_TO_BLOCK,
   // cwd only matters when spawning the stdio child; HTTP needs no working dir.
   cwd: HA_MCP_URL ? process.cwd() : HA_CWD,
   mcpServers: {
