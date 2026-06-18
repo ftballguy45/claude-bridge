@@ -327,6 +327,14 @@ app.listen(PORT, () => {
   console.log(`  GET  /health          — health check`);
   console.log(`  GET  /api/health      — health check (legacy alias)`);
 
+  // Self-diagnose activity reporting so it's obvious at boot whether the
+  // DWELL_ACTIVITY_URL env var reached this container (a common deploy miss).
+  if (DWELL_ACTIVITY_URL) {
+    console.log(`  activity reporting    -> ${DWELL_ACTIVITY_URL.replace(/\/$/, "")}/api/ai/activity`);
+  } else {
+    console.log(`  activity reporting    -> disabled (DWELL_ACTIVITY_URL unset)`);
+  }
+
   // HA-specific init (MCP server spawn + warmup). Skipped when BRIDGE_MODE
   // is "generic" — useful for consumers like WorkflowBuilder that only use
   // /classify and have no Home Assistant backend to talk to.
