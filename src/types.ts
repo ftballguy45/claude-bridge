@@ -16,6 +16,12 @@ export interface CommandRequest {
    * chat surfaces stick with Sonnet for deeper reasoning.
    */
   model?: string;
+  /**
+   * Optional conversation id (e.g. Home Assistant's conversation_id). Used only
+   * to group turns together in Dwell's AI Activity log; it does not affect the
+   * Claude session/resume behaviour.
+   */
+  conversationId?: string;
 }
 
 export interface SSEEvent {

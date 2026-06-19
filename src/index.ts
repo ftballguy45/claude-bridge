@@ -152,6 +152,10 @@ interface ActivityRecord {
   tools?: string[];
   toolCount?: number;
   status: "ok" | "error" | "timeout" | "aborted";
+  /** Conversation id (HA conversation_id) so Dwell can thread turns. */
+  conversationId?: string;
+  /** The assistant's reply text for this turn (Dwell truncates). */
+  response?: string;
 }
 function reportActivity(record: ActivityRecord): void {
   if (!DWELL_ACTIVITY_URL) return;
@@ -169,7 +173,7 @@ function reportActivity(record: ActivityRecord): void {
 
 // --- POST /api/command ---
 app.post("/api/command", (req: Request, res: Response) => {
-  const { message, systemPrompt, model } = req.body as CommandRequest;
+  const { message, systemPrompt, model, conversationId } = req.body as CommandRequest;
 
   if (!message?.trim()) {
     res.status(400).json({ error: "message is required" });
@@ -195,6 +199,8 @@ app.post("/api/command", (req: Request, res: Response) => {
   sendSSE(res, "session", { sessionId: "persistent" });
 
   let commandFinished = false;
+  // Accumulates the assistant's reply text so we can log it to Dwell's AI Activity.
+  let responseText = "";
   // Abort the in-flight SDK query if the caller (HA) hangs up, so we don't keep
   // burning tokens/turns on a request nobody is listening to anymore.
   const abortController = new AbortController();
@@ -234,6 +240,8 @@ app.post("/api/command", (req: Request, res: Response) => {
           tools: result.toolsUsed,
           toolCount: result.toolsUsed.length,
           status: "ok",
+          conversationId,
+          response: result.text,
         });
       } else {
         // Smart path: Claude SDK. Model precedence: caller-supplied (Dwell
@@ -246,7 +254,7 @@ app.post("/api/command", (req: Request, res: Response) => {
             (model && model.trim() ? " (caller-supplied)" : " (auto-tiered)"),
         );
         await executeCommand(message, {
-          onText: (content) => sendSSE(res, "text", { content }),
+          onText: (content) => { responseText += content; sendSSE(res, "text", { content }); },
           onTool: (tool, status) => sendSSE(res, "tool", { tool, status }),
           onDone: (result) => {
             commandFinished = true;
@@ -262,6 +270,8 @@ app.post("/api/command", (req: Request, res: Response) => {
               tools: result.toolsUsed,
               toolCount: result.toolsUsed?.length ?? 0,
               status: "ok",
+              conversationId,
+              response: responseText,
             });
           },
           onError: (error) => {
@@ -276,6 +286,8 @@ app.post("/api/command", (req: Request, res: Response) => {
               status: "error",
               tools: [],
               toolCount: 0,
+              conversationId,
+              response: responseText,
             });
           },
         }, abortController.signal, { systemPrompt, model: effectiveModel });
