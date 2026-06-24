@@ -76,6 +76,9 @@ export interface StreamCallbacks {
     sessionId: string;
     durationMs: number;
     timing?: TimingReport;
+    /** Authoritative full assistant text (from message blocks) — clients should
+     *  replace any delta-streamed text with this to fix token-boundary spacing. */
+    fullText?: string;
   }) => void;
   onError: (error: string) => void;
 }
@@ -188,6 +191,9 @@ export async function executeCommand(
     // True once we've streamed assistant text via partial deltas this message, so
     // we don't also emit the full text block (which would duplicate it).
     let sawTextDelta = false;
+    // Authoritative assistant text accumulated from message blocks — exact, no
+    // delta token-boundary spacing artifacts. Sent on done so the client can snap.
+    let fullText = "";
 
     for await (const event of result) {
       const now = performance.now();
@@ -252,6 +258,7 @@ export async function executeCommand(
           if (msg?.content) {
             for (const block of msg.content) {
               if (block.type === "text" && block.text) {
+                fullText += block.text;
                 if (!tFirstText) {
                   tFirstText = now;
                   const ttft = Math.round(now - t0);
@@ -322,6 +329,7 @@ export async function executeCommand(
               sessionId: sdkSessionId ?? "unknown",
               durationMs,
               timing,
+              fullText,
             });
           }
           return;
