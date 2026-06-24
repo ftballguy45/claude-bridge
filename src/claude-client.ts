@@ -56,6 +56,9 @@ const BASE_SDK_OPTIONS = {
   allowDangerouslySkipPermissions: true,
   // Restrict to the Home Assistant MCP tools only — no shell/filesystem tools.
   disallowedTools: BUILTIN_TOOLS_TO_BLOCK,
+  // Stream assistant text token-by-token (emits "stream_event" partials) so the
+  // reply types out live instead of arriving in one block at the end.
+  includePartialMessages: true,
   // cwd only matters when spawning the stdio child; HTTP needs no working dir.
   cwd: HA_MCP_URL ? process.cwd() : HA_CWD,
   mcpServers: {
@@ -182,6 +185,9 @@ export async function executeCommand(
     console.log(`[timing] +${elapsed()}ms  query() called`);
 
     let eventCount = 0;
+    // True once we've streamed assistant text via partial deltas this message, so
+    // we don't also emit the full text block (which would duplicate it).
+    let sawTextDelta = false;
 
     for await (const event of result) {
       const now = performance.now();
@@ -205,6 +211,25 @@ export async function executeCommand(
         case "system": {
           sdkSessionId = (eventAny.session_id as string) ?? sdkSessionId;
           console.log(`[timing] +${elapsed()}ms  system event (session: ${sdkSessionId?.slice(0, 8)}...)`);
+          break;
+        }
+
+        case "stream_event": {
+          // Partial assistant text — emit each token delta as it arrives.
+          const raw = (eventAny.event ?? {}) as {
+            type?: string;
+            delta?: { type?: string; text?: string };
+          };
+          if (raw.type === "content_block_delta" && raw.delta?.type === "text_delta" && raw.delta.text) {
+            if (!tFirstText) {
+              tFirstText = now;
+              const ttft = Math.round(now - t0);
+              phases.push({ label: "time_to_first_text", ms: ttft });
+              console.log(`[timing] +${elapsed()}ms  FIRST TEXT (delta, ${ttft}ms from start)`);
+            }
+            sawTextDelta = true;
+            callbacks.onText(raw.delta.text);
+          }
           break;
         }
 
@@ -233,7 +258,8 @@ export async function executeCommand(
                   phases.push({ label: "time_to_first_text", ms: ttft });
                   console.log(`[timing] +${elapsed()}ms  FIRST TEXT (${ttft}ms from start)`);
                 }
-                callbacks.onText(block.text);
+                // If partial deltas already streamed this text, don't re-emit it.
+                if (!sawTextDelta) callbacks.onText(block.text);
               } else if (block.type === "tool_use" && block.name) {
                 if (currentTool && !currentTool.endMs) {
                   currentTool.endMs = now;
@@ -247,6 +273,8 @@ export async function executeCommand(
               }
             }
           }
+          // Reset for the next assistant message (its deltas arrive before it).
+          sawTextDelta = false;
           break;
         }
 
