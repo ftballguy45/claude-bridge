@@ -6,6 +6,7 @@ import { runLocalModel, checkOllamaHealth } from "./local-model.js";
 import { startMcpServer, stopMcpServer } from "./mcp-client.js";
 import type { CommandRequest } from "./types.js";
 import { runClassify, type ClassifyRequest } from "./classify.js";
+import { getUsage } from "./usage.js";
 import { createWriteStream } from "fs";
 import { resolve } from "path";
 
@@ -331,11 +332,26 @@ app.post("/classify", async (req: Request, res: Response) => {
   }
 });
 
+// --- GET /usage ---
+// Subscription rate-limit utilization (5h + 7d windows) for the OAuth token this
+// bridge runs on. Harvested from anthropic-ratelimit-unified-* response headers via
+// a tiny cached probe — see usage.ts. Account-wide, not per-container.
+app.get("/usage", async (_req: Request, res: Response) => {
+  try {
+    res.json(await getUsage());
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[bridge] /usage error:", msg);
+    res.status(500).json({ error: msg });
+  }
+});
+
 // --- Start ---
 app.listen(PORT, () => {
   console.log(`Claude Bridge listening on http://localhost:${PORT}`);
   console.log(`  POST /classify        — generic completion (JSON in/out)`);
   console.log(`  POST /api/command     — HA command (SSE stream, MCP-enabled)`);
+  console.log(`  GET  /usage           — subscription rate-limit utilization (5h/7d)`);
   console.log(`  GET  /health          — health check`);
   console.log(`  GET  /api/health      — health check (legacy alias)`);
 
