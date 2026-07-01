@@ -7,6 +7,7 @@ import { startMcpServer, stopMcpServer } from "./mcp-client.js";
 import type { CommandRequest } from "./types.js";
 import { runClassify, type ClassifyRequest } from "./classify.js";
 import { getUsage } from "./usage.js";
+import { USAGE_UI_HTML } from "./usage-ui.js";
 import { createWriteStream } from "fs";
 import { resolve } from "path";
 
@@ -338,6 +339,9 @@ app.post("/classify", async (req: Request, res: Response) => {
 // a tiny cached probe — see usage.ts. Account-wide, not per-container.
 app.get("/usage", async (_req: Request, res: Response) => {
   try {
+    // Permissive CORS so a dashboard on another origin (Dwell, a tablet page)
+    // can read it. Usage percentages aren't sensitive.
+    res.set("Access-Control-Allow-Origin", "*");
     res.json(await getUsage());
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -346,12 +350,20 @@ app.get("/usage", async (_req: Request, res: Response) => {
   }
 });
 
+// --- GET /usage/ui ---
+// Tiny self-contained live dashboard (auto-refreshing bars + reset countdowns).
+// Same-origin fetch of /usage, no external assets. Open in a browser.
+app.get("/usage/ui", (_req: Request, res: Response) => {
+  res.type("html").send(USAGE_UI_HTML);
+});
+
 // --- Start ---
 app.listen(PORT, () => {
   console.log(`Claude Bridge listening on http://localhost:${PORT}`);
   console.log(`  POST /classify        — generic completion (JSON in/out)`);
   console.log(`  POST /api/command     — HA command (SSE stream, MCP-enabled)`);
   console.log(`  GET  /usage           — subscription rate-limit utilization (5h/7d)`);
+  console.log(`  GET  /usage/ui        — live usage dashboard (HTML)`);
   console.log(`  GET  /health          — health check`);
   console.log(`  GET  /api/health      — health check (legacy alias)`);
 
